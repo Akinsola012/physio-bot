@@ -40,10 +40,10 @@ application = None
 
 # Default time slots
 TIME_SLOTS = {
-    "8am / 6pm": (8, 18),
-    "9am / 7pm": (9, 19),
-    "10am / 8pm": (10, 20),
-    "7am / 5pm": (7, 17)
+    "🌅 8am / 6pm": (8, 18),
+    "🌄 9am / 7pm": (9, 19),
+    "☀️ 10am / 8pm": (10, 20),
+    "🌙 7am / 5pm": (7, 17)
 }
 
 # Google Sheets setup
@@ -86,9 +86,9 @@ def load_patients():
                     "pain_threshold": int(row.get("Pain Alert Threshold", 7)) if row.get("Pain Alert Threshold") else 7,
                     "preferred_time": row.get("Preferred Time", "8am,6pm")
                 }
-                print(f"Loaded patient: {name} (Phone: {phone}, Time: {PATIENT_EXERCISES[phone]['preferred_time']})")
+                print(f"Loaded patient: {name} (Phone: {phone})")
         
-        print(f"✅ Loaded {len(PATIENT_EXERCISES)} patients from Google Sheets")
+        print(f"✅ Loaded {len(PATIENT_EXERCISES)} patients")
         return PATIENT_EXERCISES
     except Exception as e:
         print(f"Error loading patients: {e}")
@@ -101,16 +101,14 @@ def save_time_preference(phone, time_pref):
             setup_google_sheets()
         
         patients_sheet = SHEET.worksheet("Patients")
-        # Find the row with this phone number
         cell = patients_sheet.find(phone)
         if cell:
-            # Update Preferred Time column (column H = 8)
             patients_sheet.update_cell(cell.row, 8, time_pref)
             print(f"Saved time preference for {phone}: {time_pref}")
     except Exception as e:
         print(f"Save time preference error: {e}")
 
-# Log to Google Sheets Logs tab
+# Log to Google Sheets
 def log_response(patient_name, response, pain_score=""):
     try:
         if not SHEET:
@@ -130,7 +128,7 @@ def log_response(patient_name, response, pain_score=""):
     except Exception as e:
         print(f"Log error: {e}")
 
-# Update Last Contact in Patients sheet
+# Update Last Contact
 def update_last_contact(patient_name):
     try:
         if not SHEET:
@@ -144,7 +142,7 @@ def update_last_contact(patient_name):
     except Exception as e:
         print(f"Update last contact error: {e}")
 
-# Save patient name and link phone to chat_id
+# Save patient
 def save_patient(chat_id, name, phone=None, time_pref=None):
     PATIENTS[chat_id] = {
         "name": name, 
@@ -157,35 +155,26 @@ def save_patient(chat_id, name, phone=None, time_pref=None):
     }
     if time_pref:
         PATIENT_TIME_PREFS[chat_id] = time_pref
-    print(f"Patient saved: {name} (chat_id: {chat_id}, phone: {phone}, time: {time_pref})")
+    print(f"Patient saved: {name}")
 
-# Get patient's time preference
-def get_patient_time_pref(chat_id):
-    if chat_id in PATIENT_TIME_PREFS:
-        return PATIENT_TIME_PREFS[chat_id]
-    
-    # Check if patient has phone linked
-    phone = PATIENTS.get(chat_id, {}).get("phone")
-    if phone and phone in PATIENT_EXERCISES:
-        return PATIENT_EXERCISES[phone].get("preferred_time", "8am,6pm")
-    
-    return "8am,6pm"
-
-# Parse time preference to hours
+# Parse time preference
 def parse_time_pref(time_pref):
+    # Check preset buttons
     if time_pref in TIME_SLOTS:
         return TIME_SLOTS[time_pref]
     
-    # Handle "8am,6pm" format
-    if "," in time_pref:
-        parts = time_pref.split(",")
-        morning_hour = int(parts[0].replace("am", "").strip())
-        evening_hour = int(parts[1].replace("pm", "").strip())
+    # Parse "8am,6pm" format
+    try:
+        parts = time_pref.lower().replace(" ", "").split(",")
+        morning_str = parts[0].replace("am", "").strip()
+        evening_str = parts[1].replace("pm", "").strip()
+        morning_hour = int(morning_str)
+        evening_hour = int(evening_str)
         return (morning_hour, evening_hour)
-    
-    return (8, 18)  # Default
+    except:
+        return (8, 18)
 
-# Send reminder to a specific chat_id
+# Send reminder
 async def send_reminder(chat_id, name, exercises, period):
     try:
         message = f"Good {period} {name}! 👋\n\nToday's exercises:\n{exercises}\n\nTap a button when done:"
@@ -196,52 +185,51 @@ async def send_reminder(chat_id, name, exercises, period):
         )
         print(f"Sent {period} reminder to {name}")
     except Exception as e:
-        print(f"Failed to send to {name}: {e}")
+        print(f"Failed to send: {e}")
 
-# Send morning reminders to all patients
+# Send reminders based on time
 async def send_morning_reminders():
-    print(f"\n--- Sending Morning Reminders: {datetime.now()} ---")
+    current_hour = datetime.now().hour
+    print(f"\n--- Checking Morning Reminders at {current_hour}:00 ---")
+    
     for phone, data in PATIENT_EXERCISES.items():
         for chat_id, patient in PATIENTS.items():
             if patient.get("phone") == phone:
-                time_pref = get_patient_time_pref(chat_id)
-                morning_hour, evening_hour = parse_time_pref(time_pref)
-                current_hour = datetime.now().hour
+                time_pref = patient.get("time_pref", "8am,6pm")
+                morning_hour, _ = parse_time_pref(time_pref)
                 if current_hour == morning_hour:
                     await send_reminder(chat_id, data["name"], data["morning"], "morning")
                 break
 
-# Send evening reminders to all patients
 async def send_evening_reminders():
-    print(f"\n--- Sending Evening Reminders: {datetime.now()} ---")
+    current_hour = datetime.now().hour
+    print(f"\n--- Checking Evening Reminders at {current_hour}:00 ---")
+    
     for phone, data in PATIENT_EXERCISES.items():
         for chat_id, patient in PATIENTS.items():
             if patient.get("phone") == phone:
-                time_pref = get_patient_time_pref(chat_id)
-                morning_hour, evening_hour = parse_time_pref(time_pref)
-                current_hour = datetime.now().hour
+                time_pref = patient.get("time_pref", "8am,6pm")
+                _, evening_hour = parse_time_pref(time_pref)
                 if current_hour == evening_hour:
                     await send_reminder(chat_id, data["name"], data["evening"], "evening")
                 break
 
 # Scheduled job runner
 async def scheduled_jobs():
-    last_minute = -1
+    last_hour = -1
     while True:
         now = datetime.now()
-        current_minute = now.minute
+        current_hour = now.hour
         
-        # Check every minute (at minute 0)
-        if current_minute == 0 and current_minute != last_minute:
+        if current_hour != last_hour:
             await send_morning_reminders()
             await send_evening_reminders()
-            last_minute = current_minute
+            last_hour = current_hour
         
-        await asyncio.sleep(30)
+        await asyncio.sleep(60)
 
 # Ask for time preference
 async def ask_time_preference(update: Update, chat_id: int, phone: str):
-    PATIENTS[chat_id] = PATIENTS.get(chat_id, {})
     PATIENTS[chat_id]["awaiting_time"] = True
     PATIENTS[chat_id]["phone"] = phone
     
@@ -252,7 +240,7 @@ async def ask_time_preference(update: Update, chat_id: int, phone: str):
         reply_markup=ReplyKeyboardMarkup(TIME_BUTTONS, resize_keyboard=True)
     )
 
-# Handle time preference input
+# Handle time preference
 async def handle_time_preference(update: Update, context: ContextTypes.DEFAULT_TYPE, chat_id: int, time_choice: str):
     phone = PATIENTS[chat_id].get("phone")
     patient_data = PATIENT_EXERCISES.get(phone)
@@ -260,10 +248,11 @@ async def handle_time_preference(update: Update, context: ContextTypes.DEFAULT_T
     if time_choice == "⏰ Custom (tell me)":
         await update.message.reply_text(
             "Please tell me your preferred times.\n\n"
-            "Format: morning hour then evening hour\n"
-            "Example: 9am,7pm\n\n"
-            "Or: 8am,6pm\n"
-            "Or: 10am,8pm"
+            "Examples:\n"
+            "• 8am,6pm\n"
+            "• 9am,7pm\n"
+            "• 10am,8pm\n\n"
+            "Just type it like the examples above."
         )
         return
     
@@ -274,32 +263,58 @@ async def handle_time_preference(update: Update, context: ContextTypes.DEFAULT_T
     PATIENT_TIME_PREFS[chat_id] = time_choice
     
     morning_hour, evening_hour = parse_time_pref(time_choice)
-    
     name = patient_data["name"]
+    
     await update.message.reply_text(
         f"✅ Time preference saved!\n\n"
         f"You will receive reminders at:\n"
-        f"🌅 Morning: {morning_hour}:00 AM\n"
-        f"🌙 Evening: {evening_hour}:00 PM\n\n"
+        f"🌅 Morning: {morning_hour}:00\n"
+        f"🌙 Evening: {evening_hour}:00\n\n"
         f"Your exercises:\n"
-        f"Morning: {patient_data['morning']}\n"
-        f"Evening: {patient_data['evening']}\n\n"
+        f"🌅 Morning: {patient_data['morning']}\n"
+        f"🌙 Evening: {patient_data['evening']}\n\n"
         f"Tap a button to log your progress:",
         reply_markup=ReplyKeyboardMarkup(BUTTONS, resize_keyboard=True)
     )
     update_last_contact(name)
 
-# Handle custom time input
+# Handle custom time
 async def handle_custom_time(update: Update, context: ContextTypes.DEFAULT_TYPE, chat_id: int, custom_time: str):
     phone = PATIENTS[chat_id].get("phone")
     
-    # Validate format
     try:
-        parts = custom_time.lower().replace(" ", "").split(",")
-        morning = parts[0].replace("am", "").strip()
-        evening = parts[1].replace("pm", "").strip()
-        morning_hour = int(morning)
-        evening_hour = int(evening)
+        # Clean the input
+        custom_time = custom_time.lower().replace(" ", "")
+        
+        # Check if it has am/pm
+        if "am" not in custom_time or "pm" not in custom_time:
+            await update.message.reply_text(
+                "❌ Please include 'am' and 'pm'.\n\n"
+                "Examples:\n"
+                "• 8am,6pm\n"
+                "• 9am,7pm\n"
+                "• 10am,8pm\n\n"
+                "Try again or tap a button:",
+                reply_markup=ReplyKeyboardMarkup(TIME_BUTTONS, resize_keyboard=True)
+            )
+            return
+        
+        # Split by comma
+        parts = custom_time.split(",")
+        if len(parts) != 2:
+            await update.message.reply_text(
+                "❌ Use format: morning,evening\n"
+                "Example: 8am,6pm\n\n"
+                "Try again:",
+                reply_markup=ReplyKeyboardMarkup(TIME_BUTTONS, resize_keyboard=True)
+            )
+            return
+        
+        morning_part = parts[0].replace("am", "").strip()
+        evening_part = parts[1].replace("pm", "").strip()
+        
+        morning_hour = int(morning_part)
+        evening_hour = int(evening_part)
         
         if 5 <= morning_hour <= 12 and 16 <= evening_hour <= 22:
             time_pref = f"{morning_hour}am,{evening_hour}pm"
@@ -311,22 +326,29 @@ async def handle_custom_time(update: Update, context: ContextTypes.DEFAULT_TYPE,
             patient_data = PATIENT_EXERCISES[phone]
             await update.message.reply_text(
                 f"✅ Custom time saved!\n\n"
-                f"You will receive reminders at {morning_hour}:00 AM and {evening_hour}:00 PM\n\n"
+                f"You will receive reminders at:\n"
+                f"🌅 Morning: {morning_hour}:00\n"
+                f"🌙 Evening: {evening_hour}:00\n\n"
                 f"Tap a button to log your progress:",
                 reply_markup=ReplyKeyboardMarkup(BUTTONS, resize_keyboard=True)
             )
         else:
             await update.message.reply_text(
-                "❌ Invalid times. Morning should be 5-12, evening 16-22.\n\n"
-                "Example: 9am,7pm\n\n"
-                "Please try again or tap a button:",
+                "❌ Invalid times.\n\n"
+                "Morning should be between 5am and 12pm\n"
+                "Evening should be between 4pm and 10pm\n\n"
+                "Example: 8am,6pm\n\n"
+                "Try again or tap a button:",
                 reply_markup=ReplyKeyboardMarkup(TIME_BUTTONS, resize_keyboard=True)
             )
     except Exception as e:
         await update.message.reply_text(
-            "❌ Invalid format. Please use:\n"
-            "Example: 9am,7pm\n\n"
-            "Or tap a button:",
+            f"❌ Invalid format.\n\n"
+            "Examples:\n"
+            "• 8am,6pm\n"
+            "• 9am,7pm\n"
+            "• 10am,8pm\n\n"
+            "Try again or tap a button:",
             reply_markup=ReplyKeyboardMarkup(TIME_BUTTONS, resize_keyboard=True)
         )
 
@@ -349,7 +371,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Format: 2348079877837 (no + sign)"
         )
 
-# Handle phone number input
+# Handle phone input
 async def handle_phone(update: Update, context: ContextTypes.DEFAULT_TYPE, chat_id: int, phone: str):
     phone = phone.replace("+", "").replace(" ", "").strip()
     
@@ -375,47 +397,34 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     message_text = update.message.text
     
-    # Check if waiting for phone
     if chat_id in PATIENTS and PATIENTS[chat_id].get("awaiting_phone"):
         await handle_phone(update, context, chat_id, message_text)
         return
     
-    # Check if waiting for time preference
     if chat_id in PATIENTS and PATIENTS[chat_id].get("awaiting_time"):
         if message_text == "⏰ Custom (tell me)":
             await handle_time_preference(update, context, chat_id, message_text)
-        elif "am" in message_text.lower() and "pm" in message_text.lower():
+        elif any(x in message_text.lower() for x in ["am", "pm"]):
             await handle_custom_time(update, context, chat_id, message_text)
         else:
             await handle_time_preference(update, context, chat_id, message_text)
         return
     
-    # Get patient name
     patient_name = PATIENTS.get(chat_id, {}).get("name", "Unknown")
     
-    # Handle button responses
     if "DONE" in message_text:
         log_response(patient_name, "DONE")
-        await update.message.reply_text(
-            "Great job! 👏 Keep it up!",
-            reply_markup=ReplyKeyboardMarkup(BUTTONS, resize_keyboard=True)
-        )
+        await update.message.reply_text("Great job! 👏 Keep it up!", reply_markup=ReplyKeyboardMarkup(BUTTONS, resize_keyboard=True))
         update_last_contact(patient_name)
     
     elif "PAIN" in message_text:
         log_response(patient_name, "PAIN_SELECTED")
-        await update.message.reply_text(
-            "I'm sorry you're in pain. Please rate it 1-10:",
-            reply_markup=ReplyKeyboardMarkup(PAIN_BUTTONS, resize_keyboard=True)
-        )
+        await update.message.reply_text("I'm sorry you're in pain. Please rate it 1-10:", reply_markup=ReplyKeyboardMarkup(PAIN_BUTTONS, resize_keyboard=True))
         context.user_data["awaiting_pain"] = True
     
     elif "SKIP" in message_text:
         log_response(patient_name, "SKIP")
-        await update.message.reply_text(
-            "Try to stay consistent 💪 Your recovery depends on it.",
-            reply_markup=ReplyKeyboardMarkup(BUTTONS, resize_keyboard=True)
-        )
+        await update.message.reply_text("Try to stay consistent 💪 Your recovery depends on it.", reply_markup=ReplyKeyboardMarkup(BUTTONS, resize_keyboard=True))
         update_last_contact(patient_name)
     
     elif context.user_data.get("awaiting_pain"):
@@ -423,26 +432,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             pain_score = int(message_text)
             if 0 <= pain_score <= 10:
                 log_response(patient_name, "PAIN_SCORE", str(pain_score))
-                
                 if pain_score >= 7:
-                    await context.bot.send_message(
-                        chat_id=CLINICIAN_ID,
-                        text=f"🚨 PATIENT ALERT 🚨\n\n{patient_name} reported pain: {pain_score}/10\n\nPlease review immediately."
-                    )
-                
-                await update.message.reply_text(
-                    f"Pain recorded: {pain_score}/10. Take care! 🙏",
-                    reply_markup=ReplyKeyboardMarkup(BUTTONS, resize_keyboard=True)
-                )
+                    await context.bot.send_message(chat_id=CLINICIAN_ID, text=f"🚨 PATIENT ALERT 🚨\n\n{patient_name} reported pain: {pain_score}/10\n\nPlease review immediately.")
+                await update.message.reply_text(f"Pain recorded: {pain_score}/10. Take care! 🙏", reply_markup=ReplyKeyboardMarkup(BUTTONS, resize_keyboard=True))
                 context.user_data["awaiting_pain"] = False
         except ValueError:
             await update.message.reply_text("Please send a number between 0-10.")
     
     else:
-        await update.message.reply_text(
-            "Tap a button: DONE, PAIN, or SKIP",
-            reply_markup=ReplyKeyboardMarkup(BUTTONS, resize_keyboard=True)
-        )
+        await update.message.reply_text("Tap a button: DONE, PAIN, or SKIP", reply_markup=ReplyKeyboardMarkup(BUTTONS, resize_keyboard=True))
 
 # Main function
 async def main():
@@ -455,16 +453,14 @@ async def main():
     application.add_handler(CommandHandler("start", start))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
-    print("🤖 Bot is running with time preference selection and scheduled reminders...")
+    print("🤖 Bot is running with time preference selection...")
     
     await application.initialize()
     await application.start()
     await application.updater.start_polling()
     
-    # Start scheduled jobs in background
     asyncio.create_task(scheduled_jobs())
     
-    # Keep running
     while True:
         await asyncio.sleep(1)
 
