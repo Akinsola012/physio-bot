@@ -35,10 +35,10 @@ TIME_BUTTONS = [
 ]
 
 TIME_SLOTS = {
-    "🌅 8am / 6pm": (8, 18),
-    "🌄 9am / 7pm": (9, 19),
-    "☀️ 10am / 8pm": (10, 20),
-    "🌙 7am / 5pm": (7, 17)
+    "🌅 8am / 6pm": "8am,6pm",
+    "🌄 9am / 7pm": "9am,7pm", 
+    "☀️ 10am / 8pm": "10am,8pm",
+    "🌙 7am / 5pm": "7am,5pm"
 }
 
 # Global variables
@@ -250,12 +250,13 @@ async def handle_time_preference(update: Update, context: ContextTypes.DEFAULT_T
         return
     
     if time_choice in TIME_SLOTS:
-        save_time_preference(phone, time_choice)
-        PATIENTS[chat_id]["time_pref"] = time_choice
+        actual_time = TIME_SLOTS[time_choice]
+        save_time_preference(phone, actual_time)
+        PATIENTS[chat_id]["time_pref"] = actual_time
         PATIENTS[chat_id]["awaiting_time"] = False
-        PATIENT_TIME_PREFS[chat_id] = time_choice
+        PATIENT_TIME_PREFS[chat_id] = actual_time
         
-        morning_hour, evening_hour = parse_time_pref(time_choice)
+        morning_hour, evening_hour = parse_time_pref(actual_time)
         name = patient_data["name"]
         
         await update.message.reply_text(
