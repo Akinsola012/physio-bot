@@ -1,7 +1,7 @@
 import os
 import logging
 import asyncio
-from datetime import datetime, time
+from datetime import datetime
 from dotenv import load_dotenv
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
@@ -22,8 +22,8 @@ logging.basicConfig(level=logging.INFO)
 
 # Patient storage
 PATIENTS = {}
-PATIENT_EXERCISES = {}  # Store exercises for each patient (by phone)
-PATIENT_TIME_PREFS = {}  # Store time preferences (by chat_id)
+PATIENT_EXERCISES = {}
+PATIENT_TIME_PREFS = {}
 
 # Buttons
 BUTTONS = [["✅ DONE", "⚠️ PAIN", "❌ SKIP"]]
@@ -34,17 +34,16 @@ TIME_BUTTONS = [
     ["⏰ Custom (tell me)"]
 ]
 
-# Global variables
-SHEET = None
-application = None
-
-# Default time slots
 TIME_SLOTS = {
     "🌅 8am / 6pm": (8, 18),
     "🌄 9am / 7pm": (9, 19),
     "☀️ 10am / 8pm": (10, 20),
     "🌙 7am / 5pm": (7, 17)
 }
+
+# Global variables
+SHEET = None
+application = None
 
 # Google Sheets setup
 def setup_google_sheets():
@@ -86,7 +85,7 @@ def load_patients():
                     "pain_threshold": int(row.get("Pain Alert Threshold", 7)) if row.get("Pain Alert Threshold") else 7,
                     "preferred_time": row.get("Preferred Time", "8am,6pm")
                 }
-                print(f"Loaded patient: {name} (Phone: {phone})")
+                print(f"Loaded patient: {name}")
         
         print(f"✅ Loaded {len(PATIENT_EXERCISES)} patients")
         return PATIENT_EXERCISES
@@ -94,7 +93,7 @@ def load_patients():
         print(f"Error loading patients: {e}")
         return {}
 
-# Save time preference to Google Sheets
+# Save time preference
 def save_time_preference(phone, time_pref):
     try:
         if not SHEET:
@@ -108,7 +107,7 @@ def save_time_preference(phone, time_pref):
     except Exception as e:
         print(f"Save time preference error: {e}")
 
-# Log to Google Sheets
+# Log response
 def log_response(patient_name, response, pain_score=""):
     try:
         if not SHEET:
@@ -128,7 +127,7 @@ def log_response(patient_name, response, pain_score=""):
     except Exception as e:
         print(f"Log error: {e}")
 
-# Update Last Contact
+# Update last contact
 def update_last_contact(patient_name):
     try:
         if not SHEET:
@@ -145,8 +144,8 @@ def update_last_contact(patient_name):
 # Save patient
 def save_patient(chat_id, name, phone=None, time_pref=None):
     PATIENTS[chat_id] = {
-        "name": name, 
-        "chat_id": chat_id, 
+        "name": name,
+        "chat_id": chat_id,
         "phone": phone,
         "time_pref": time_pref,
         "awaiting_name": False,
@@ -159,11 +158,9 @@ def save_patient(chat_id, name, phone=None, time_pref=None):
 
 # Parse time preference
 def parse_time_pref(time_pref):
-    # Check preset buttons
     if time_pref in TIME_SLOTS:
         return TIME_SLOTS[time_pref]
     
-    # Parse "8am,6pm" format
     try:
         parts = time_pref.lower().replace(" ", "").split(",")
         morning_str = parts[0].replace("am", "").strip()
@@ -187,11 +184,9 @@ async def send_reminder(chat_id, name, exercises, period):
     except Exception as e:
         print(f"Failed to send: {e}")
 
-# Send reminders based on time
+# Send reminders
 async def send_morning_reminders():
     current_hour = datetime.now().hour
-    print(f"\n--- Checking Morning Reminders at {current_hour}:00 ---")
-    
     for phone, data in PATIENT_EXERCISES.items():
         for chat_id, patient in PATIENTS.items():
             if patient.get("phone") == phone:
@@ -203,8 +198,6 @@ async def send_morning_reminders():
 
 async def send_evening_reminders():
     current_hour = datetime.now().hour
-    print(f"\n--- Checking Evening Reminders at {current_hour}:00 ---")
-    
     for phone, data in PATIENT_EXERCISES.items():
         for chat_id, patient in PATIENTS.items():
             if patient.get("phone") == phone:
@@ -240,7 +233,7 @@ async def ask_time_preference(update: Update, chat_id: int, phone: str):
         reply_markup=ReplyKeyboardMarkup(TIME_BUTTONS, resize_keyboard=True)
     )
 
-# Handle time preference
+# Handle time preference from buttons
 async def handle_time_preference(update: Update, context: ContextTypes.DEFAULT_TYPE, chat_id: int, time_choice: str):
     phone = PATIENTS[chat_id].get("phone")
     patient_data = PATIENT_EXERCISES.get(phone)
@@ -256,37 +249,38 @@ async def handle_time_preference(update: Update, context: ContextTypes.DEFAULT_T
         )
         return
     
-    # Save the time preference
-    save_time_preference(phone, time_choice)
-    PATIENTS[chat_id]["time_pref"] = time_choice
-    PATIENTS[chat_id]["awaiting_time"] = False
-    PATIENT_TIME_PREFS[chat_id] = time_choice
-    
-    morning_hour, evening_hour = parse_time_pref(time_choice)
-    name = patient_data["name"]
-    
-    await update.message.reply_text(
-        f"✅ Time preference saved!\n\n"
-        f"You will receive reminders at:\n"
-        f"🌅 Morning: {morning_hour}:00\n"
-        f"🌙 Evening: {evening_hour}:00\n\n"
-        f"Your exercises:\n"
-        f"🌅 Morning: {patient_data['morning']}\n"
-        f"🌙 Evening: {patient_data['evening']}\n\n"
-        f"Tap a button to log your progress:",
-        reply_markup=ReplyKeyboardMarkup(BUTTONS, resize_keyboard=True)
-    )
-    update_last_contact(name)
+    if time_choice in TIME_SLOTS:
+        save_time_preference(phone, time_choice)
+        PATIENTS[chat_id]["time_pref"] = time_choice
+        PATIENTS[chat_id]["awaiting_time"] = False
+        PATIENT_TIME_PREFS[chat_id] = time_choice
+        
+        morning_hour, evening_hour = parse_time_pref(time_choice)
+        name = patient_data["name"]
+        
+        await update.message.reply_text(
+            f"✅ Time preference saved!\n\n"
+            f"You will receive reminders at:\n"
+            f"🌅 Morning: {morning_hour}:00\n"
+            f"🌙 Evening: {evening_hour}:00\n\n"
+            f"Your exercises:\n"
+            f"🌅 Morning: {patient_data['morning']}\n"
+            f"🌙 Evening: {patient_data['evening']}\n\n"
+            f"Tap a button to log your progress:",
+            reply_markup=ReplyKeyboardMarkup(BUTTONS, resize_keyboard=True)
+        )
+        update_last_contact(name)
+    else:
+        await handle_custom_time(update, context, chat_id, time_choice)
 
-# Handle custom time
+# Handle custom time input (FIXED VERSION)
 async def handle_custom_time(update: Update, context: ContextTypes.DEFAULT_TYPE, chat_id: int, custom_time: str):
     phone = PATIENTS[chat_id].get("phone")
+    patient_data = PATIENT_EXERCISES.get(phone)
     
     try:
-        # Clean the input
         custom_time = custom_time.lower().replace(" ", "")
         
-        # Check if it has am/pm
         if "am" not in custom_time or "pm" not in custom_time:
             await update.message.reply_text(
                 "❌ Please include 'am' and 'pm'.\n\n"
@@ -299,9 +293,7 @@ async def handle_custom_time(update: Update, context: ContextTypes.DEFAULT_TYPE,
             )
             return
         
-        # Split by comma
-        parts = custom_time.split(",")
-        if len(parts) != 2:
+        if "," not in custom_time:
             await update.message.reply_text(
                 "❌ Use format: morning,evening\n"
                 "Example: 8am,6pm\n\n"
@@ -310,6 +302,7 @@ async def handle_custom_time(update: Update, context: ContextTypes.DEFAULT_TYPE,
             )
             return
         
+        parts = custom_time.split(",")
         morning_part = parts[0].replace("am", "").strip()
         evening_part = parts[1].replace("pm", "").strip()
         
@@ -323,15 +316,18 @@ async def handle_custom_time(update: Update, context: ContextTypes.DEFAULT_TYPE,
             PATIENTS[chat_id]["awaiting_time"] = False
             PATIENT_TIME_PREFS[chat_id] = time_pref
             
-            patient_data = PATIENT_EXERCISES[phone]
             await update.message.reply_text(
                 f"✅ Custom time saved!\n\n"
                 f"You will receive reminders at:\n"
                 f"🌅 Morning: {morning_hour}:00\n"
                 f"🌙 Evening: {evening_hour}:00\n\n"
+                f"Your exercises:\n"
+                f"🌅 Morning: {patient_data['morning']}\n"
+                f"🌙 Evening: {patient_data['evening']}\n\n"
                 f"Tap a button to log your progress:",
                 reply_markup=ReplyKeyboardMarkup(BUTTONS, resize_keyboard=True)
             )
+            update_last_contact(patient_data["name"])
         else:
             await update.message.reply_text(
                 "❌ Invalid times.\n\n"
